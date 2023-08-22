@@ -19,14 +19,6 @@ const sharp = require("sharp");
 
 initializeApp();
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
-
-exports.helloWorld = onRequest((request, response) => {
-  logger.info("Hello logs!", {structuredData: true});
-  response.send("Hello from Firebase!");
-});
-
 /**
  * When an image is uploaded in the Storage bucket,
  * generate a thumbnail automatically using sharp.
@@ -41,8 +33,17 @@ exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
   if (!contentType.startsWith("image/")) {
     return logger.log("This is not an image.");
   }
+
   // Exit if the image is already a thumbnail.
   const fileName = path.basename(filePath);
+  const parts = path.dirname(filePath).split(path.delimiter);
+
+  logger.log("dirname parts " + parts.join(","));
+
+  // check if the file is already a thumbnail (this function is triggered also on upload of a thumbnail)
+  if (parts.length > 0 && parts[parts.length - 1] === "thumbnails") {
+    return logger.log("Already a Thumbnail.");
+  }
 
   // Download file into memory from bucket.
   const bucket = getStorage().bucket(fileBucket);
