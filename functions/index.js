@@ -17,31 +17,45 @@ const THUMBNAIL_HEIGHT = defineInt("THUMBNAIL_HEIGHT", 200);
  * generate a thumbnail automatically using sharp.
  */
 exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
-
   logger.log("generateThumbnail started.");
 
   const fileBucket = event.data.bucket; // Storage bucket containing the file.
   const filePath = event.data.name; // File path in the bucket.
-  const contentType = event.data.contentType; // File content type.
-
-  // Exit if this is triggered on a file that is not an image.
-  if (!contentType.startsWith("image/")) {
+  
+  if (!isImage(event.data)) {
     return logger.log("This is not an image.");
   }
-
-  // Exit if the image is already a thumbnail.
-  const fileName = path.basename(filePath);
-  const parts = path.dirname(filePath).split(path.delimiter);
-
-  logger.log("dirname parts " + parts.join(","));
-
-  // check if the file is already a thumbnail (this function is triggered also on upload of a thumbnail)
-  if (parts.length > 0 && parts[parts.length - 1] === "thumbnails") {
+  
+  if (isThumbnail(filePath)) {
     return logger.log("Already a Thumbnail.");
   }
-
-  // Open a stream for reading image from bucket.
+    
   const bucket = getStorage().bucket(fileBucket);
+  const readStream = getReadStream(bucket, filePath);
+  const writeStream = getWriteStream(bucket, getThumbnailPath(filePath));
+  readStream.pipe(getTransform()).pipe(writeStream);
+
+  logger.log("generateThumbnail finished.");
+});
+
+const getThumbnailPath = (filePath) => {
+  const fileName = path.basename(filePath);
+  return path.join(path.dirname(filePath), "thumbnails", fileName);
+ }
+
+const getTransform = () =>
+  sharp()
+    .resize({ 
+      width: THUMBNAIL_WIDTH.value(), 
+      height: THUMBNAIL_HEIGHT.value(), 
+      withoutEnlargement: true,
+    })
+    .on("info", (info) => {
+      logger.log("Image resized.");
+    });
+
+const getReadStream = (bucket, filePath) => {
+  // Open a stream for reading image from bucket.
   let readStream = bucket.file(filePath).createReadStream();
 
   readStream.on("error", (err) => {
@@ -51,9 +65,10 @@ exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
   readStream.on("close", () => {
     logger.log("Finished reading image.");
   });
+  return readStream;
+}
 
-  const thumbFilePath = path.join(path.dirname(filePath), "thumbnails", fileName);
-
+const getWriteStream = (bucket, thumbFilePath) => {
   // Open a stream for writing image to bucket.
   let writeStream = bucket.file(thumbFilePath).createWriteStream();
 
@@ -64,20 +79,15 @@ exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
   writeStream.on("close", () => {
     logger.log("Finished writing image.");
   });
+  return writeStream;
+}
 
-  // Create a image transformer 
-  let transform = sharp()
-    .resize({ 
-      width: THUMBNAIL_WIDTH.value(), 
-      height: THUMBNAIL_HEIGHT.value(), 
-      withoutEnlargement: true,
-    })
-    .on("info", (info) => {
-      logger.log("Image resized.");
-    });
+const isThumbnail = (filePath) => {
+  const parts = path.dirname(filePath).split(path.delimiter);
+  if (parts.length > 0 && parts[parts.length - 1] === "thumbnails") {
+    return true;
+  }
+  return false;
+}
 
-  // Pipe the image transformer to the bucket write stream
-  readStream.pipe(transform).pipe(writeStream);
-  logger.log("generateThumbnail finished.");
-
-});
+const isImage = (fileData) => fileData.contentType.startsWith("image/");
