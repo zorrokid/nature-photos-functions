@@ -5,14 +5,20 @@ const logger = require("firebase-functions/logger");
 const path = require("path");
 
 const sharp = require("sharp");
+const { defineInt } = require("firebase-functions/params");
 
 initializeApp();
+
+const THUMBNAIL_WIDTH = defineInt("THUMBNAIL_WIDTH", 200);
+const THUMBNAIL_HEIGHT = defineInt("THUMBNAIL_HEIGHT", 200);
 
 /**
  * When an image is uploaded in the Storage bucket,
  * generate a thumbnail automatically using sharp.
  */
 exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
+
+  logger.log("generateThumbnail started.");
 
   const fileBucket = event.data.bucket; // Storage bucket containing the file.
   const filePath = event.data.name; // File path in the bucket.
@@ -62,8 +68,8 @@ exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
   // Create a image transformer 
   let transform = sharp()
     .resize({ 
-      width: 200, 
-      height: 200, 
+      width: THUMBNAIL_WIDTH.value(), 
+      height: THUMBNAIL_HEIGHT.value(), 
       withoutEnlargement: true,
     })
     .on("info", (info) => {
@@ -72,5 +78,6 @@ exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
 
   // Pipe the image transformer to the bucket write stream
   readStream.pipe(transform).pipe(writeStream);
+  logger.log("generateThumbnail finished.");
 
 });
