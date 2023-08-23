@@ -1,20 +1,9 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
-
-const {onRequest} = require("firebase-functions/v2/https");
 const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const {initializeApp} = require("firebase-admin/app");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const path = require("path");
 
-// library for image resizing
 const sharp = require("sharp");
 
 initializeApp();
@@ -45,26 +34,43 @@ exports.generateThumbnail = onObjectFinalized({cpu: 2}, async (event) => {
     return logger.log("Already a Thumbnail.");
   }
 
-  // Download file into memory from bucket.
+  // Open a stream for reading image from bucket.
   const bucket = getStorage().bucket(fileBucket);
-  const downloadResponse = await bucket.file(filePath).download();
-  const imageBuffer = downloadResponse[0];
-  logger.log("Image downloaded!");
+  let readStream = bucket.file(filePath).createReadStream();
 
-  // Generate a thumbnail using sharp.
-  const thumbnailBuffer = await sharp(imageBuffer).resize({
-    width: 200,
-    height: 200,
-    withoutEnlargement: true,
-  }).toBuffer();
-  logger.log("Thumbnail created");
+  readStream.on("error", (err) => {
+    logger.error("Error reading image: " + err);
+  });
+
+  readStream.on("close", () => {
+    logger.log("Finished reading image.");
+  });
 
   const thumbFilePath = path.join(path.dirname(filePath), "thumbnails", fileName);
 
-  // Upload the thumbnail.
-  const metadata = {contentType: contentType};
-  await bucket.file(thumbFilePath).save(thumbnailBuffer, {
-    metadata: metadata,
+  // Open a stream for writing image to bucket.
+  let writeStream = bucket.file(thumbFilePath).createWriteStream();
+
+  writeStream.on("error", (err) => {
+    logger.error("Error writing image: " + err);
   });
-  return logger.log("Thumbnail uploaded!");
+
+  writeStream.on("close", () => {
+    logger.log("Finished writing image.");
+  });
+
+  // Create a image transformer 
+  let transform = sharp()
+    .resize({ 
+      width: 200, 
+      height: 200, 
+      withoutEnlargement: true,
+    })
+    .on("info", (info) => {
+      logger.log("Image resized.");
+    });
+
+  // Pipe the image transformer to the bucket write stream
+  readStream.pipe(transform).pipe(writeStream);
+
 });
