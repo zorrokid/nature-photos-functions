@@ -11,3 +11,7 @@ Emulator UI is running by default in http://127.0.0.1:4000
 - Click "Go to Storage Emulator"
 - Select "Upload file" and select a file
 - File should appear to list and later on the processed file should appear to list
+
+# To deploy
+
+    firebase deploy --only functions
