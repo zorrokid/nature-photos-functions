@@ -5,7 +5,10 @@ const logger = require("firebase-functions/logger");
 const path = require("path");
 
 const sharp = require("sharp");
-const { defineInt, defineString } = require("firebase-functions/params");
+const {defineInt, defineString} = require("firebase-functions/params");
+const {setGlobalOptions} = require("firebase-functions/v2");
+
+setGlobalOptions({region: "europe-central2"});
 
 initializeApp();
 
@@ -27,19 +30,20 @@ exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
   if (!isValidImageEvent(eventData)) return;
   const readStream = getReadStream(eventData);
   const transformSettings = getTransformSettings(eventData);
-  const writeStream = getWriteStream(eventData.bucket, getTargetFilePath(eventData, transformSettings));
+  const writeStream = getWriteStream(
+      eventData.bucket, getTargetFilePath(eventData, transformSettings));
   readStream.pipe(getImageResizeTransform(transformSettings)).pipe(writeStream);
   logger.log("resizeImage finished.");
 });
 
 const getTransformSettings = (eventData) => {
-  switch(eventData.eventType) {
+  switch (eventData.eventType) {
     case IMAGE_RESIZE_RESIZE_FOLDER_EVENT:
-    return {
-      width: THUMBNAIL_WIDTH.value(),
-      height: THUMBNAIL_HEIGHT.value(),
-      targetFolder: THUMBNAIL_FOLDER.value(),
-    }
+      return {
+        width: THUMBNAIL_WIDTH.value(),
+        height: THUMBNAIL_HEIGHT.value(),
+        targetFolder: THUMBNAIL_FOLDER.value(),
+      };
     case IMAGE_RESIZE_SOURCE_FOLDER_EVENT:
       return {
         width: IMAGE_MAX_WIDTH.value(),
@@ -47,10 +51,10 @@ const getTransformSettings = (eventData) => {
         targetFolder: RESIZE_FOLDER.value(),
       };
   }
-}
+};
 
 const getEventTypeBySourceFolder = (sourceFolder) => {
-  switch(sourceFolder) {
+  switch (sourceFolder) {
     case SOURCE_FOLDER.value():
       return IMAGE_RESIZE_SOURCE_FOLDER_EVENT;
     case RESIZE_FOLDER.value():
@@ -58,7 +62,7 @@ const getEventTypeBySourceFolder = (sourceFolder) => {
     default:
       return IMAGE_RESIZE_INVALID_EVENT;
   }
-}
+};
 
 const parseEvent = (event) => {
   const fileBucket = event.data.bucket;
@@ -68,15 +72,15 @@ const parseEvent = (event) => {
   const sourceFolder = parts.length > 0 ? parts[parts.length - 1] : null;
   const bucket = getStorage().bucket(fileBucket);
 
-   return {
+  return {
     bucket,
     filePath,
     fileName,
     sourceFolder,
     eventType: getEventTypeBySourceFolder(sourceFolder),
     contentType: event.data.contentType,
-  }
-}
+  };
+};
 
 const isValidImageEvent = (eventData) => {
   if (!isImage(eventData)) {
@@ -88,26 +92,30 @@ const isValidImageEvent = (eventData) => {
     return false;
   }
   return true;
-}
+};
 
 const getTargetFilePath = (eventData, transformSettings) => {
   return path.join(transformSettings.targetFolder, eventData.fileName);
- }
+};
 
 const getImageResizeTransform = (transformSettings) =>
   sharp()
-    .resize({ 
-      width: transformSettings.width, 
-      height: transformSettings.height, 
-      withoutEnlargement: true,
-    })
-    .on("info", (info) => {
-      logger.log(`Image resized to ${transformSettings.width}x${transformSettings.height}.`);
-    });
+      .resize({
+        width: transformSettings.width,
+        height: transformSettings.height,
+        withoutEnlargement: true,
+      })
+      .on("info", (info) => {
+        logger.log(
+            `Image resized to 
+              ${transformSettings.width}x${transformSettings.height}`,
+        );
+      });
 
 const getReadStream = (eventData) => {
   // Open a stream for reading image from bucket.
-  let readStream = eventData.bucket.file(eventData.filePath).createReadStream();
+  const readStream =
+    eventData.bucket.file(eventData.filePath).createReadStream();
 
   readStream.on("error", (err) => {
     logger.error("Error reading image: " + err);
@@ -117,11 +125,11 @@ const getReadStream = (eventData) => {
     logger.log("Finished reading image.");
   });
   return readStream;
-}
+};
 
 const getWriteStream = (bucket, targetFilePath) => {
   // Open a stream for writing image to bucket.
-  let writeStream = bucket.file(targetFilePath).createWriteStream();
+  const writeStream = bucket.file(targetFilePath).createWriteStream();
 
   writeStream.on("error", (err) => {
     logger.error("Error writing image: " + err);
@@ -131,6 +139,6 @@ const getWriteStream = (bucket, targetFilePath) => {
     logger.log("Finished writing image.");
   });
   return writeStream;
-}
+};
 
 const isImage = (eventData) => eventData.contentType.startsWith("image/");
