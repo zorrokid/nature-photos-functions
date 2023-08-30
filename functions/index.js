@@ -27,6 +27,9 @@ const IMAGE_RESIZE_RESIZE_FOLDER_EVENT = 2;
 exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
   logger.log("resizeImage started.");
   const eventData = parseEvent(event);
+  if (!eventData) {
+    logger.error("No event data.");
+  }
   if (!isValidImageEvent(eventData)) return;
   const readStream = getReadStream(eventData);
   const transformSettings = getTransformSettings(eventData);
@@ -65,11 +68,16 @@ const getEventTypeBySourceFolder = (sourceFolder) => {
 };
 
 const parseEvent = (event) => {
+  logger.log("Parsing event.", event);
   const fileBucket = event.data.bucket;
+  logger.log("File bucket parsed.", fileBucket);
   const filePath = event.data.name;
+  logger.log("File path parsed.", filePath);
   const fileName = path.basename(filePath);
+  logger.log("File name parsed.", fileName);
   const parts = path.dirname(filePath).split("/");
   const sourceFolder = parts.length > 0 ? parts[parts.length - 1] : null;
+  logger.log("Source folder parsed.", sourceFolder);
   const bucket = getStorage().bucket(fileBucket);
 
   return {
