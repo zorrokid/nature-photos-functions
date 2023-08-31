@@ -24,6 +24,122 @@ const IMAGE_RESIZE_INVALID_EVENT = 0;
 const IMAGE_RESIZE_SOURCE_FOLDER_EVENT = 1;
 const IMAGE_RESIZE_RESIZE_FOLDER_EVENT = 2;
 
+// vision API - split these into separate files
+const vision = require("@google-cloud/vision");
+// const Storage = require("@google-cloud/storage");
+const Firestore = require("@google-cloud/firestore");
+
+const client = new vision.ImageAnnotatorClient();
+
+exports.vision_analysis = onObjectFinalized({cpu: 2}, async (event) => {
+  /*
+  Example event:
+  Event: {
+    "specversion":"1.0",
+    "id":"07999975-2b37-4ee6-9b85-2274f7338fd1",
+    "type":"google.cloud.storage.object.v1.finalized",
+    "source":"//storage.googleapis.com/projects/_/buckets/
+      flutter-nature-photos.appspot.com/objects/IMG_8491-test.JPG",
+    "time":"2023-08-31T19:48:30.304Z",
+    "data": {
+      "kind":"storage#object",
+      "name":"IMG_8491-test.JPG",
+      "bucket":"flutter-nature-photos.appspot.com",
+      "generation":"1693511310303",
+      "metageneration":"1",
+      "contentType":"image/jpeg",
+      "timeCreated":"2023-08-31T19:48:30.304Z",
+      "updated":"2023-08-31T19:48:30.304Z",
+      "storageClass":"STANDARD",
+      "size":"909025",
+      "md5Hash":"z0Rvu1OWJraYXy1CpSFFBQ==",
+      "etag":"PUxpci/dVFV4gRj4pBnSt7sxcTg",
+      "metadata":{
+        "firebaseStorageDownloadTokens":"12153ab8-5734-4a03-affb-b4deb492e2e5"},
+        "crc32c":"sDGBZw==",
+        "timeStorageClassUpdated":"2023-08-31T19:48:30.304Z",
+        "id":"flutter-nature-photos.appspot.com/
+          IMG_8491-test.JPG/1693511310303",
+        "selfLink":"http://127.0.0.1:9199/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG","mediaLink":"http://127.0.0.1:9199/download/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG?generation=1693511310303&alt=media"
+      }}
+  */
+  logger.log(`Event: ${JSON.stringify(event)}`);
+
+  const filename = event.data.name;
+  const filebucket = event.data.bucket;
+
+  if (!filename) {
+    logger.error("No filename");
+    return;
+  }
+
+  logger.log(`New picture uploaded ${filename} in ${filebucket}`);
+
+  const request = {
+    image: {source: {imageUri: `gs://${filebucket}/${filename}`}},
+    features: [
+      {type: "LABEL_DETECTION"},
+      {type: "IMAGE_PROPERTIES"},
+      {type: "SAFE_SEARCH_DETECTION"},
+    ],
+  };
+
+  // invoking the Vision API
+  const [response] = await client.annotateImage(request);
+  logger.log(`Raw vision output for: 
+     ${filename}: ${JSON.stringify(response)}`);
+
+  if (response.error === null) {
+    // listing the labels found in the picture
+    const labels = response.labelAnnotations
+        .sort((ann1, ann2) => ann2.score - ann1.score)
+        .map((ann) => ann.description);
+    logger.log(`Labels: ${labels.join(", ")}`);
+
+    // retrieving the dominant color of the picture
+    const color = response.imagePropertiesAnnotation.dominantColors.colors
+        .sort((c1, c2) => c2.score - c1.score)[0].color;
+    const colorHex = decColorToHex(color.red, color.green, color.blue);
+    logger.log(`Colors: ${colorHex}`);
+
+    // determining if the picture is safe to show
+    const safeSearch = response.safeSearchAnnotation;
+    const isSafe = ["adult", "spoof", "medical", "violence", "racy"]
+        .every((k) =>
+          !["LIKELY", "VERY_LIKELY"].includes(safeSearch[k]));
+    logger.log(`Safe? ${isSafe}`);
+
+    // if the picture is safe to display, store it in Firestore
+    if (isSafe) {
+      const pictureStore = new Firestore().collection("pictures");
+
+      const doc = pictureStore.doc(filename);
+      await doc.set({
+        labels: labels,
+        color: colorHex,
+        created: Firestore.Timestamp.now(),
+      }, {merge: true});
+
+      logger.log("Stored metadata in Firestore");
+    }
+  } else {
+    throw new Error(`Vision API error: code 
+    ${response.error.code}, message: "${response.error.message}"`);
+  }
+});
+
+/**
+ * @param {number} r
+ * @param {number} g
+ * @param {number} b
+ * @return {string} The hex representation of the color.
+ */
+function decColorToHex(r, g, b) {
+  return "#" + Number(r).toString(16).padStart(2, "0") +
+    Number(g).toString(16).padStart(2, "0") +
+    Number(b).toString(16).padStart(2, "0");
+}
+
 exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
   logger.log("resizeImage started.");
   const eventData = parseEvent(event);
