@@ -15,3 +15,11 @@ Emulator UI is running by default in http://127.0.0.1:4000
 # To deploy
 
     firebase deploy --only functions
+
+# Configuration
+
+- https://firebase.google.com/docs/functions/config-env?gen=2nd
+
+# Storage
+
+- Best practises: https://cloud.google.com/storage/docs/best-practices
