@@ -3,6 +3,7 @@ const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const vision = require("@google-cloud/vision");
 const {getFirestore} = require("firebase-admin/firestore");
+const {firestore} = require("firebase-admin");
 
 const client = new vision.ImageAnnotatorClient();
 
@@ -93,7 +94,7 @@ exports.imageAnalysis = onObjectFinalized({
       await doc.set({
         labels: labels,
         color: colorHex,
-        created: getFirestore().Timestamp.now(),
+        created: firestore.Timestamp.now(),
       }, {merge: true});
 
       logger.log("Stored metadata in Firestore");
