@@ -7,4 +7,4 @@ initializeApp();
 const imageAnalysis = require("./src/image_analysis");
 const imageResize = require("./src/image_resize");
 exports.imageAnalysis = imageAnalysis.imageAnalysis;
-exports.imageResize = imageResize.imageResize;
+exports.resizeImage = imageResize.resizeImage;

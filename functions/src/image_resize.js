@@ -3,21 +3,53 @@ const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const path = require("path");
 const sharp = require("sharp");
-const {defineInt, defineString} = require("firebase-functions/params");
+const {defineInt} = require("firebase-functions/params");
 
-const THUMBNAIL_WIDTH = defineInt("THUMBNAIL_WIDTH", 200);
-const THUMBNAIL_HEIGHT = defineInt("THUMBNAIL_HEIGHT", 200);
-const IMAGE_MAX_WIDTH = defineInt("IMAGE_MAX_WIDTH", 200);
-const IMAGE_MAX_HEIGHT = defineInt("IMAGE_MAX_HEIGHT", 200);
-const SOURCE_FOLDER = defineString("SOURCE_FOLDER", "upload");
-const RESIZE_FOLDER = defineString("RESIZE_FOLDER", "resized");
-const THUMBNAIL_FOLDER = defineString("THUMBNAIL_FOLDER", "thumbnail");
+const IMAGE_MAX_WIDTH_THUMBNAIL = defineInt("THUMBNAIL_WIDTH", 150);
+const IMAGE_MAX_HEIGHT_THUMBNAIL = defineInt("THUMBNAIL_HEIGHT", 150);
+const IMAGE_MAX_WIDTH_FULL = defineInt("IMAGE_MAX_WIDTH", 1200);
+const IMAGE_MAX_HEIGHT_FULL = defineInt("IMAGE_MAX_HEIGHT", 630);
+const IMAGE_MAX_WIDTH_ANALYSIS = defineInt("IMAGE_MAX_WIDTH_ANALYSIS", 640);
+const IMAGE_MAX_HEIGHT_ANALYSIS = defineInt("IMAGE_MAX_HEIGHT_ANALYSIS", 480);
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 
-const IMAGE_RESIZE_INVALID_EVENT = 0;
-const IMAGE_RESIZE_SOURCE_FOLDER_EVENT = 1;
-const IMAGE_RESIZE_RESIZE_FOLDER_EVENT = 2;
-
+// scoped on default bucket
 exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
+  /* example event:
+  {
+    "specversion":"1.0",
+    "id":"1cb1fc3d-1067-4e3e-b2df-4526c0c0f8a0",
+    "type":"google.cloud.storage.object.v1.finalized",
+    "source":"//storage.googleapis.com/projects/_/buckets/
+      flutter-nature-photos.appspot.com/objects/IMG_8491-test.JPG",
+    "time":"2023-09-04T18:00:18.840Z",
+    "data": {
+        "kind":"storage#object",
+        "name":"IMG_8491-test.JPG",
+        "bucket":"flutter-nature-photos.appspot.com",
+        "generation":"1693850418840",
+        "metageneration":"1",
+        "contentType":"image/jpeg",
+        "timeCreated":"2023-09-04T18:00:18.840Z",
+        "updated":"2023-09-04T18:00:18.840Z",
+        "storageClass":"STANDARD",
+        "size":"909025",
+        "md5Hash":"z0Rvu1OWJraYXy1CpSFFBQ==",
+        "etag":"WiUvs0FNcq5sz1oNWeERXPyPRhY",
+        "metadata": {
+          "firebaseStorageDownloadTokens":"dbd6d9a0-5d77-494b-ba13-9ca89f9706f7"
+        },
+        "crc32c":"sDGBZw==",
+        "timeStorageClassUpdated":"2023-09-04T18:00:18.840Z",
+        "id":"flutter-nature-photos.appspot.com/
+          IMG_8491-test.JPG/1693850418840",
+        "selfLink":"http://127.0.0.1:9199/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG",
+        "mediaLink":"http://127.0.0.1:9199/download/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG?generation=1693850418840&alt=media"
+      },
+    "severity":"INFO"
+    }
+  */
+
   logger.log("resizeImage started.");
   const eventData = parseEvent(event);
   if (!eventData) {
@@ -25,40 +57,63 @@ exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
   }
   if (!isValidImageEvent(eventData)) return;
   const readStream = getReadStream(eventData);
-  const transformSettings = getTransformSettings(eventData);
-  const writeStream = getWriteStream(
-      eventData.bucket, getTargetFilePath(eventData, transformSettings));
-  readStream.pipe(getImageResizeTransform(transformSettings)).pipe(writeStream);
+  const resizeBucket = getStorage().bucket("flutter-nature-photos-resize");
+  const analysisBucket = getStorage()
+      .bucket("flutter-nature-photos-image-analysis");
+
+  const sharpStream = sharp({failOn: "none"});
+  const promises = [];
+
+  promises.push(
+      sharpStream.clone()
+          .resize({
+            width: IMAGE_MAX_WIDTH_FULL.value(),
+            height: IMAGE_MAX_HEIGHT_FULL.value(),
+            withoutEnlargement: true,
+          })
+          .pipe(getWriteStream(resizeBucket,
+              path.join("full", eventData.fileName))),
+  );
+
+  promises.push(
+      sharpStream.clone()
+          .resize({
+            width: IMAGE_MAX_WIDTH_THUMBNAIL.value(),
+            height: IMAGE_MAX_HEIGHT_THUMBNAIL.value(),
+            withoutEnlargement: true,
+          })
+          .pipe(getWriteStream(resizeBucket,
+              path.join("thumbnail", eventData.fileName))),
+  );
+
+  promises.push(
+      sharpStream.clone()
+          .resize({
+            width: IMAGE_MAX_WIDTH_ANALYSIS.value(),
+            height: IMAGE_MAX_HEIGHT_ANALYSIS.value(),
+            withoutEnlargement: true,
+          })
+          .pipe(getWriteStream(analysisBucket, eventData.fileName)),
+  );
+
+  readStream.pipe(sharpStream);
+
+  Promise.all(promises).then((res) => {
+    logger.log("All resizes done.");
+  }).catch((error) => {
+    logger.error("Error resizing image", error);
+  }).finally(() => {
+    logger.log("Deleting upload file.");
+    const file = eventData.bucket.file(eventData.filePath);
+    file.delete().then(() => {
+      logger.log("Upload file deleted successfully");
+    }).catch((error) => {
+      logger.error("Error deleting upload file", error);
+    });
+  });
+
   logger.log("resizeImage finished.");
 });
-
-const getTransformSettings = (eventData) => {
-  switch (eventData.eventType) {
-    case IMAGE_RESIZE_RESIZE_FOLDER_EVENT:
-      return {
-        width: THUMBNAIL_WIDTH.value(),
-        height: THUMBNAIL_HEIGHT.value(),
-        targetFolder: THUMBNAIL_FOLDER.value(),
-      };
-    case IMAGE_RESIZE_SOURCE_FOLDER_EVENT:
-      return {
-        width: IMAGE_MAX_WIDTH.value(),
-        height: IMAGE_MAX_HEIGHT.value(),
-        targetFolder: RESIZE_FOLDER.value(),
-      };
-  }
-};
-
-const getEventTypeBySourceFolder = (sourceFolder) => {
-  switch (sourceFolder) {
-    case SOURCE_FOLDER.value():
-      return IMAGE_RESIZE_SOURCE_FOLDER_EVENT;
-    case RESIZE_FOLDER.value():
-      return IMAGE_RESIZE_RESIZE_FOLDER_EVENT;
-    default:
-      return IMAGE_RESIZE_INVALID_EVENT;
-  }
-};
 
 const parseEvent = (event) => {
   logger.log("Parsing event.", event);
@@ -68,18 +123,16 @@ const parseEvent = (event) => {
   logger.log("File path parsed.", filePath);
   const fileName = path.basename(filePath);
   logger.log("File name parsed.", fileName);
-  const parts = path.dirname(filePath).split("/");
-  const sourceFolder = parts.length > 0 ? parts[parts.length - 1] : null;
-  logger.log("Source folder parsed.", sourceFolder);
   const bucket = getStorage().bucket(fileBucket);
+  const size = event.data.size;
+  logger.log("File size parsed.", size);
 
   return {
     bucket,
     filePath,
     fileName,
-    sourceFolder,
-    eventType: getEventTypeBySourceFolder(sourceFolder),
     contentType: event.data.contentType,
+    size,
   };
 };
 
@@ -88,30 +141,12 @@ const isValidImageEvent = (eventData) => {
     logger.log("This is not an image.");
     return false;
   }
-  if (eventData.eventType === IMAGE_RESIZE_INVALID_EVENT) {
-    logger.log("Invalid image resize event.");
+  if (eventData.size > MAX_FILE_SIZE_BYTES) {
+    logger.log("File size exceeds the maximum allowed size.");
     return false;
   }
   return true;
 };
-
-const getTargetFilePath = (eventData, transformSettings) => {
-  return path.join(transformSettings.targetFolder, eventData.fileName);
-};
-
-const getImageResizeTransform = (transformSettings) =>
-  sharp()
-      .resize({
-        width: transformSettings.width,
-        height: transformSettings.height,
-        withoutEnlargement: true,
-      })
-      .on("info", (info) => {
-        logger.log(
-            `Image resized to 
-              ${transformSettings.width}x${transformSettings.height}`,
-        );
-      });
 
 const getReadStream = (eventData) => {
   // Open a stream for reading image from bucket.

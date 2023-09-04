@@ -1,11 +1,15 @@
 const {onObjectFinalized} = require("firebase-functions/v2/storage");
+const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const vision = require("@google-cloud/vision");
 const {getFirestore} = require("firebase-admin/firestore");
 
 const client = new vision.ImageAnnotatorClient();
 
-exports.imageAnalysis = onObjectFinalized({cpu: 2}, async (event) => {
+exports.imageAnalysis = onObjectFinalized({
+  bucket: "flutter-nature-photos-image-analysis",
+}, async (event) => {
+  logger.log("imageAnalysis started.");
   /*
   Example event:
   Event: {
@@ -37,7 +41,6 @@ exports.imageAnalysis = onObjectFinalized({cpu: 2}, async (event) => {
         "selfLink":"http://127.0.0.1:9199/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG","mediaLink":"http://127.0.0.1:9199/download/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG?generation=1693511310303&alt=media"
       }}
   */
-  logger.log(`Event: ${JSON.stringify(event)}`);
 
   const filename = event.data.name;
   const filebucket = event.data.bucket;
@@ -86,7 +89,6 @@ exports.imageAnalysis = onObjectFinalized({cpu: 2}, async (event) => {
     // if the picture is safe to display, store it in Firestore
     if (isSafe) {
       const pictureStore = getFirestore().collection("pictures");
-
       const doc = pictureStore.doc(filename);
       await doc.set({
         labels: labels,
@@ -100,6 +102,16 @@ exports.imageAnalysis = onObjectFinalized({cpu: 2}, async (event) => {
     throw new Error(`Vision API error: code 
     ${response.error.code}, message: "${response.error.message}"`);
   }
+
+  logger.log("Deleting analyzed file.");
+  const bucket = getStorage().bucket(filebucket);
+  const file = bucket.file(filename);
+  file.delete().then(() => {
+    logger.log("Analyzed file deleted successfully.");
+  }).catch((error) => {
+    logger.error("Error deleting analyzed file.", error);
+  });
+  logger.log("imageAnalysis completed");
 });
 
 /**
