@@ -16,41 +16,6 @@ const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 
 // scoped on default bucket
 exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
-  /* example event:
-  {
-    "specversion":"1.0",
-    "id":"1cb1fc3d-1067-4e3e-b2df-4526c0c0f8a0",
-    "type":"google.cloud.storage.object.v1.finalized",
-    "source":"//storage.googleapis.com/projects/_/buckets/
-      flutter-nature-photos.appspot.com/objects/IMG_8491-test.JPG",
-    "time":"2023-09-04T18:00:18.840Z",
-    "data": {
-        "kind":"storage#object",
-        "name":"IMG_8491-test.JPG",
-        "bucket":"flutter-nature-photos.appspot.com",
-        "generation":"1693850418840",
-        "metageneration":"1",
-        "contentType":"image/jpeg",
-        "timeCreated":"2023-09-04T18:00:18.840Z",
-        "updated":"2023-09-04T18:00:18.840Z",
-        "storageClass":"STANDARD",
-        "size":"909025",
-        "md5Hash":"z0Rvu1OWJraYXy1CpSFFBQ==",
-        "etag":"WiUvs0FNcq5sz1oNWeERXPyPRhY",
-        "metadata": {
-          "firebaseStorageDownloadTokens":"dbd6d9a0-5d77-494b-ba13-9ca89f9706f7"
-        },
-        "crc32c":"sDGBZw==",
-        "timeStorageClassUpdated":"2023-09-04T18:00:18.840Z",
-        "id":"flutter-nature-photos.appspot.com/
-          IMG_8491-test.JPG/1693850418840",
-        "selfLink":"http://127.0.0.1:9199/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG",
-        "mediaLink":"http://127.0.0.1:9199/download/storage/v1/b/flutter-nature-photos.appspot.com/o/IMG_8491-test.JPG?generation=1693850418840&alt=media"
-      },
-    "severity":"INFO"
-    }
-  */
-
   logger.log("resizeImage started.");
   const eventData = parseEvent(event);
   if (!eventData) {
