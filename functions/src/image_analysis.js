@@ -2,8 +2,8 @@ const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const vision = require("@google-cloud/vision");
-const {getFirestore} = require("firebase-admin/firestore");
 const {firestore} = require("firebase-admin");
+const {appendToImageMetaData} = require("./utils/file_data_utils");
 
 const client = new vision.ImageAnnotatorClient();
 
@@ -87,17 +87,17 @@ exports.imageAnalysis = onObjectFinalized({
           !["LIKELY", "VERY_LIKELY"].includes(safeSearch[k]));
     logger.log(`Safe? ${isSafe}`);
 
-    // if the picture is safe to display, store it in Firestore
+    // if the picture is safe to display, store data to Firestore
     if (isSafe) {
-      const pictureStore = getFirestore().collection("pictures");
-      const doc = pictureStore.doc(filename);
-      await doc.set({
+      appendToImageMetaData(filename, {
         labels: labels,
         color: colorHex,
-        created: firestore.Timestamp.now(),
-      }, {merge: true});
-
+        analyzed: firestore.Timestamp.now(),
+      });
       logger.log("Stored metadata in Firestore");
+    } else {
+      // TODO: delete picture from storage
+      logger.log("Picture is not safe to display");
     }
   } else {
     throw new Error(`Vision API error: code 
