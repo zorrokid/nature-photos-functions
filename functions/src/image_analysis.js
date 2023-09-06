@@ -87,17 +87,21 @@ exports.imageAnalysis = onObjectFinalized({
           !["LIKELY", "VERY_LIKELY"].includes(safeSearch[k]));
     logger.log(`Safe? ${isSafe}`);
 
-    // if the picture is safe to display, store it in Firestore
+    const documentKey = filename.split(".")[0];
+
+    // if the picture is safe to display, store data to Firestore
     if (isSafe) {
-      const pictureStore = getFirestore().collection("pictures");
-      const doc = pictureStore.doc(filename);
+      const pictureStore = getFirestore().collection("uploadFileInfo");
+      const doc = pictureStore.doc(documentKey);
       await doc.set({
         labels: labels,
         color: colorHex,
         created: firestore.Timestamp.now(),
       }, {merge: true});
-
       logger.log("Stored metadata in Firestore");
+    } else {
+      // TODO: delete picture from storage
+      logger.log("Picture is not safe to display");
     }
   } else {
     throw new Error(`Vision API error: code 
