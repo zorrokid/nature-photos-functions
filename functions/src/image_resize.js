@@ -5,6 +5,9 @@ const path = require("path");
 const sharp = require("sharp");
 const {defineInt} = require("firebase-functions/params");
 const {appendToImageMetaData} = require("./utils/file_data_utils");
+const util = require("util");
+const stream = require("stream");
+const pipeline = util.promisify(stream.pipeline);
 
 const IMAGE_MAX_WIDTH_THUMBNAIL = defineInt("THUMBNAIL_WIDTH", 150);
 const IMAGE_MAX_HEIGHT_THUMBNAIL = defineInt("THUMBNAIL_HEIGHT", 150);
@@ -28,43 +31,29 @@ exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
       .bucket("flutter-nature-photos-image-analysis");
 
   const sharpStream = sharp({failOn: "none"});
-  const promises = [];
+  const promises = [
+    pipeline(readStream, sharpStream),
+    pipeline(sharpStream.clone().resize({
+      width: IMAGE_MAX_WIDTH_FULL.value(),
+      height: IMAGE_MAX_HEIGHT_FULL.value(),
+      withoutEnlargement: true,
+    }), getWriteStream(resizeBucket,
+        path.join("full", eventData.fileName))),
+    pipeline(sharpStream.clone().resize({
+      width: IMAGE_MAX_WIDTH_THUMBNAIL.value(),
+      height: IMAGE_MAX_HEIGHT_THUMBNAIL.value(),
+      withoutEnlargement: true,
+    }), getWriteStream(resizeBucket,
+        path.join("thumbnail", eventData.fileName))),
+    pipeline(sharpStream.clone().resize({
+      width: IMAGE_MAX_WIDTH_ANALYSIS.value(),
+      height: IMAGE_MAX_HEIGHT_ANALYSIS.value(),
+      withoutEnlargement: true,
+    }), getWriteStream(analysisBucket,
+        eventData.fileName)),
+  ];
 
-  promises.push(
-      sharpStream.clone()
-          .resize({
-            width: IMAGE_MAX_WIDTH_FULL.value(),
-            height: IMAGE_MAX_HEIGHT_FULL.value(),
-            withoutEnlargement: true,
-          })
-          .pipe(getWriteStream(resizeBucket,
-              path.join("full", eventData.fileName))),
-  );
-
-  promises.push(
-      sharpStream.clone()
-          .resize({
-            width: IMAGE_MAX_WIDTH_THUMBNAIL.value(),
-            height: IMAGE_MAX_HEIGHT_THUMBNAIL.value(),
-            withoutEnlargement: true,
-          })
-          .pipe(getWriteStream(resizeBucket,
-              path.join("thumbnail", eventData.fileName))),
-  );
-
-  promises.push(
-      sharpStream.clone()
-          .resize({
-            width: IMAGE_MAX_WIDTH_ANALYSIS.value(),
-            height: IMAGE_MAX_HEIGHT_ANALYSIS.value(),
-            withoutEnlargement: true,
-          })
-          .pipe(getWriteStream(analysisBucket, eventData.fileName)),
-  );
-
-  readStream.pipe(sharpStream);
-
-  Promise.all(promises).then((res) => {
+  Promise.all(promises).then((_) => {
     logger.log("All resizes done.");
   }).catch((error) => {
     logger.error("Error resizing image", error);
@@ -111,11 +100,12 @@ const parseEvent = (event) => {
 
 const isValidImageEvent = (eventData) => {
   if (!isImage(eventData)) {
-    logger.log("This is not an image.");
+    logger.log("This is not an image.", eventData);
     return false;
   }
   if (eventData.size > MAX_FILE_SIZE_BYTES) {
-    logger.log("File size exceeds the maximum allowed size.");
+    logger.log("File size exceeds the maximum allowed size.",
+        MAX_FILE_SIZE_BYTES);
     return false;
   }
   return true;
@@ -127,11 +117,11 @@ const getReadStream = (eventData) => {
     eventData.bucket.file(eventData.filePath).createReadStream();
 
   readStream.on("error", (err) => {
-    logger.error("Error reading image: " + err);
+    logger.error("Error reading image", err);
   });
 
   readStream.on("close", () => {
-    logger.log("Finished reading image.");
+    logger.log("Finished reading image.", eventData.filePath);
   });
   return readStream;
 };
@@ -141,11 +131,11 @@ const getWriteStream = (bucket, targetFilePath) => {
   const writeStream = bucket.file(targetFilePath).createWriteStream();
 
   writeStream.on("error", (err) => {
-    logger.error("Error writing image: " + err);
+    logger.error("Error writing image ", err);
   });
 
   writeStream.on("close", () => {
-    logger.log("Finished writing image.");
+    logger.log("Finished writing image.", targetFilePath);
   });
   return writeStream;
 };
