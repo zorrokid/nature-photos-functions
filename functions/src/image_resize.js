@@ -4,7 +4,6 @@ const logger = require("firebase-functions/logger");
 const path = require("path");
 const sharp = require("sharp");
 const {defineInt} = require("firebase-functions/params");
-const {appendToImageMetaData} = require("./utils/file_data_utils");
 const util = require("util");
 const stream = require("stream");
 const pipeline = util.promisify(stream.pipeline);
@@ -58,12 +57,6 @@ exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
   }).catch((error) => {
     logger.error("Error resizing image", error);
   }).finally(() => {
-    // TODO: should this be in different function
-    // triggered by saving to resize bucket?
-    appendToImageMetaData(eventData.fileName, {
-      resized: true,
-      thumbnail: true,
-    });
     logger.log("Deleting upload file.");
     const file = eventData.bucket.file(eventData.filePath);
     file.delete().then(() => {
