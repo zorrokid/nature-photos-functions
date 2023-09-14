@@ -12,6 +12,10 @@ Emulator UI is running by default in http://127.0.0.1:4000
 - Select "Upload file" and select a file
 - File should appear to list and later on the processed file should appear to list
 
+## To find problems with emulator
+
+    firebase emulators:start --debug
+
 # To deploy
 
     firebase deploy --only functions
