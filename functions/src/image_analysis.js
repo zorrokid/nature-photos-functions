@@ -40,34 +40,32 @@ exports.imageAnalysis = onObjectFinalized({
     // listing the labels found in the picture
     const labels = response.labelAnnotations
         .sort((ann1, ann2) => ann2.score - ann1.score)
-        .map((ann) => ann.description);
+        .map((ann) => ({
+          value: ann.description,
+          // seems that this is not currently available :(
+          // boundingPoly is always null in the response
+          // TODO: enable boundingPoly when available
+          // boundingPoly: ann.boundingPoly?.normalizedVertices ?? null,
+          score: ann.score,
+          // seems to be always zero
+          // TODO: enable later when available
+          // confidence: ann.confidence,
+          topicality: ann.topicality,
+          selected: false,
+        }));
     logger.log(`Labels: ${labels.join(", ")}`);
 
-    // retrieving the dominant color of the picture
-    const color = response.imagePropertiesAnnotation.dominantColors.colors
-        .sort((c1, c2) => c2.score - c1.score)[0].color;
-    const colorHex = decColorToHex(color.red, color.green, color.blue);
-    logger.log(`Colors: ${colorHex}`);
-
-    // determining if the picture is safe to show
     const safeSearch = response.safeSearchAnnotation;
     const isSafe = ["adult", "spoof", "medical", "violence", "racy"]
         .every((k) =>
           !["LIKELY", "VERY_LIKELY"].includes(safeSearch[k]));
-    logger.log(`Safe? ${isSafe}`);
 
-    // if the picture is safe to display, store data to Firestore
-    if (isSafe) {
-      appendToImageMetaData(filename, {
-        labels: labels,
-        color: colorHex,
-        analyzed: firestore.Timestamp.now(),
-      });
-      logger.log("Stored metadata in Firestore");
-    } else {
-      // TODO: delete picture from storage
-      logger.log("Picture is not safe to display");
-    }
+    appendToImageMetaData(filename, {
+      labels: labels,
+      analyzed: firestore.Timestamp.now(),
+      isSafe: isSafe, // TODO: add a job to delete unsafe images
+    });
+    logger.log("Stored metadata in Firestore");
   } else {
     throw new Error(`Vision API error: code 
     ${response.error.code}, message: "${response.error.message}"`);
@@ -83,15 +81,3 @@ exports.imageAnalysis = onObjectFinalized({
   });
   logger.log("imageAnalysis completed");
 });
-
-/**
- * @param {number} r
- * @param {number} g
- * @param {number} b
- * @return {string} The hex representation of the color.
- */
-function decColorToHex(r, g, b) {
-  return "#" + Number(r).toString(16).padStart(2, "0") +
-    Number(g).toString(16).padStart(2, "0") +
-    Number(b).toString(16).padStart(2, "0");
-}
