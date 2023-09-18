@@ -55,13 +55,17 @@ exports.imageAnalysis = onObjectFinalized({
         }));
     logger.log(`Labels: ${labels.join(", ")}`);
 
+
     const safeSearch = response.safeSearchAnnotation;
     const isSafe = ["adult", "spoof", "medical", "violence", "racy"]
         .every((k) =>
           !["LIKELY", "VERY_LIKELY"].includes(safeSearch[k]));
 
+    const labelMap = {};
+    labels.forEach((label) => labelMap[label.value] = label);
+
     appendToImageMetaData(filename, {
-      labels: labels,
+      labels: labelMap,
       analyzed: firestore.Timestamp.now(),
       isSafe: isSafe, // TODO: add a job to delete unsafe images
     });
