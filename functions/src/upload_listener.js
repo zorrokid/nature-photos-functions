@@ -22,8 +22,8 @@ exports.uploadListener = onObjectFinalized({
 
   if (!(resized || thumbnail)) return;
 
-  const payload = resized ? {resized: true} : {thumbnail: true};
+  const metadata = resized ? {resized: true} : {thumbnail: true};
 
-  appendToImageMetaData(fileName, payload);
+  appendToImageMetaData(fileName, metadata);
   logger.log("bucketListener finished.");
 });

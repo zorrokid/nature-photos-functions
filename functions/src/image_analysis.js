@@ -2,8 +2,8 @@ const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const vision = require("@google-cloud/vision");
-const {firestore} = require("firebase-admin");
-const {appendToImageMetaData} = require("./utils/file_data_utils");
+const {appendLabelsToImageMetaData} = require("./utils/file_data_utils");
+const {FieldValue} = require("firebase-admin/firestore");
 
 const client = new vision.ImageAnnotatorClient();
 
@@ -33,8 +33,6 @@ exports.imageAnalysis = onObjectFinalized({
 
   // invoking the Vision API
   const [response] = await client.annotateImage(request);
-  logger.log(`Raw vision output for: 
-     ${filename}: ${JSON.stringify(response)}`);
 
   if (response.error === null) {
     // listing the labels found in the picture
@@ -53,8 +51,6 @@ exports.imageAnalysis = onObjectFinalized({
           topicality: ann.topicality,
           selected: false,
         }));
-    logger.log(`Labels: ${labels.join(", ")}`);
-
 
     const safeSearch = response.safeSearchAnnotation;
     const isSafe = ["adult", "spoof", "medical", "violence", "racy"]
@@ -64,15 +60,15 @@ exports.imageAnalysis = onObjectFinalized({
     const labelMap = {};
     labels.forEach((label) => labelMap[label.value] = label);
 
-    appendToImageMetaData(filename, {
-      labels: labelMap,
-      analyzed: firestore.Timestamp.now(),
-      isSafe: isSafe, // TODO: add a job to delete unsafe images
-    });
-    logger.log("Stored metadata in Firestore");
+    const metadata = {
+      "analyzed": FieldValue.serverTimestamp(),
+      "isSafe": isSafe, // TODO: add a job to delete unsafe images
+    };
+
+    appendLabelsToImageMetaData(filename, labels, metadata);
   } else {
     throw new Error(`Vision API error: code 
-    ${response.error.code}, message: "${response.error.message}"`);
+      ${response.error.code}, message: "${response.error.message}"`);
   }
 
   logger.log("Deleting analyzed file.");
