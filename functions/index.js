@@ -11,4 +11,4 @@ const serveImageInfo = require("./src/serve_image_info");
 exports.imageAnalysis = imageAnalysis.imageAnalysis;
 exports.resizeImage = imageResize.resizeImage;
 exports.uploadListener = uploadListener.uploadListener;
-exports.test = serveImageInfo.test;
+exports.getImageInfo = serveImageInfo.getImageInfo;
