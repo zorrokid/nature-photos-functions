@@ -17,7 +17,9 @@ const IMAGE_MAX_HEIGHT_ANALYSIS = defineInt("IMAGE_MAX_HEIGHT_ANALYSIS", 480);
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 
 // scoped on default bucket
-exports.resizeImage = onObjectFinalized({cpu: 2}, async (event) => {
+exports.resizeImage = onObjectFinalized({
+  bucket: "flutter-nature-photos.appspot.com",
+}, async (event) => {
   logger.log("resizeImage started.");
   const eventData = parseEvent(event);
   if (!eventData) {
