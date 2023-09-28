@@ -12,8 +12,7 @@ exports.getImageInfo = onRequest({
     const labels = [];
     const labelsSnapshot = await doc.ref.collection("labels").get();
     for (const labelDoc of labelsSnapshot.docs) {
-      const label = labelDoc.data();
-      labels.push(label.id);
+      labels.push(labelDoc.id);
     }
     const imageInfo = {
       "id": doc.id,
