@@ -66,7 +66,7 @@ const getDownloadUrls = async (id, expirationTimeSpanSeconds) => {
   const fullFileUrl = originalResult[0];
 
   return {
-    thumbnailurl: thumbFileUrl,
+    thumbnailUrl: thumbFileUrl,
     fullSizeUrl: fullFileUrl,
   };
 };
