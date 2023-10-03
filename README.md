@@ -39,3 +39,17 @@ https://cloud.google.com/vision/docs/supported-files
 "To enable accurate image detection within the Vision API, images should generally be a minimum of 640 x 480 pixels (about 300k pixels)."
 
 "smaller sizes may result in lower accuracy, while larger sizes may increase processing time and bandwidth usage without providing comparable benefits in accuracy."
+
+# Signed URL's
+
+https://cloud.google.com/storage/docs/access-control/signed-urls
+https://cloud.google.com/storage/docs/access-control/signing-urls-with-helpers#client-libraries
+
+## Troubleshooting
+
+"Error: Permission 'iam.serviceAccounts.signBlob' denied on resource (or it may not exist)."
+
+"If you are using 2nd gen Cloud Function, you need to give Service Account Token Creator to the 2nd gen's service"
+- https://stackoverflow.com/questions/57564505/unable-to-assign-iam-serviceaccounts-signblob-permission
+
+=> Added "Service Account Token Creator" role to "Default compute service account" principal, fixed the problem.
